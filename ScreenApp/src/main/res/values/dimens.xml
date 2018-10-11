@@ -1,0 +1,4 @@
+<resources>
+    <dimen name="size_margin">16dp</dimen>
+    <dimen name="size_padding">18dp</dimen>
+</resources>

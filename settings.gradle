@@ -1,0 +1,1 @@
+include ':CameraApp', ':RecvApp', ':ScreenApp', ':MediaEncoder'

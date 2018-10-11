@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">摄像头共享</string>
+    <string name="no_permission_to_open_camera">没有使用摄像头权限</string>
+    <string name="permission_of_camera_has_been_stopped">申请摄像头权限已经被禁止</string>
+</resources>
