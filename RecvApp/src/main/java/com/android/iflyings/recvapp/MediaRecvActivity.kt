@@ -17,6 +17,9 @@ class MediaRecvActivity : AppCompatActivity(), SurfaceHolder.Callback {
         sc_show.holder.addCallback(this)
     }
 
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        mMediaRecvManager = MediaRecvManager()
+    }
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         mMediaRecvManager.setOutputSurface(holder.surface)
         mMediaRecvManager.prepare()
@@ -25,7 +28,5 @@ class MediaRecvActivity : AppCompatActivity(), SurfaceHolder.Callback {
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         mMediaRecvManager.stop()
     }
-    override fun surfaceCreated(holder: SurfaceHolder) {
-        mMediaRecvManager = MediaRecvManager()
-    }
+
 }

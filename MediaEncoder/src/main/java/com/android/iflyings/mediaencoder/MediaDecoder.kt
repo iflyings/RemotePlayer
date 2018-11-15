@@ -8,7 +8,6 @@ import java.nio.ByteBuffer
 class MediaDecoder {
     companion object {
         private const val TAG = "zw"
-        private const val FRAME_RATE = 30
         private const val TIMEOUT_US = -1L
 
         private const val STATE_INITIALIZED = 0
@@ -24,7 +23,7 @@ class MediaDecoder {
     private val mAudioCodec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
     private lateinit var mAudioTrack: AudioTrack
 
-    private var mFrameCount = 0
+    private var mStartDecodeAudioTick = 0L
 
     fun setOutputSurface(surface: Surface) {
         if (mState != STATE_INITIALIZED) {
@@ -99,7 +98,7 @@ class MediaDecoder {
         mState = STATE_UNINITIALIZED
     }
 
-    fun decodeVideo(inputData: ByteArray, inputOffset: Int, inputLength: Int) {
+    fun decodeVideo(inputData: ByteArray, inputOffset: Int, inputLength: Int, presentationTimeUs: Long) {
         if (mState != STATE_DECODING) {
             throw IllegalStateException("media decoder state is not decoding")
         }
@@ -110,10 +109,8 @@ class MediaDecoder {
                 val inputBuffer = mVideoCodec.getInputBuffer(inputBufferId)!!
                 inputBuffer.clear()
                 inputBuffer.put(inputData, inputOffset, inputLength)
-                val presentationTimeUs = 1000000L * mFrameCount / FRAME_RATE
                 mVideoCodec.queueInputBuffer(inputBufferId, 0, inputLength, presentationTimeUs, 0)
-                mFrameCount++
-                // presentationTimeUs 此缓冲区的显示时间戳（以微秒为单位），通常是这个缓冲区应该呈现的媒体时间
+                // presentationTimeUs 使用当前时间作为参考标准，以防止丢包后时间不准
             }
             val bufferInfo = MediaCodec.BufferInfo()
             var outputBufferIndex = mVideoCodec.dequeueOutputBuffer(bufferInfo, 0)
@@ -142,10 +139,11 @@ class MediaDecoder {
                 val inputBuffer = mAudioCodec.getInputBuffer(inputBufferId)!!
                 inputBuffer.clear()
                 inputBuffer.put(inputData, inputOffset, inputLength)
-                val presentationTimeUs = 1000000L * mFrameCount / FRAME_RATE
+                if (mStartDecodeAudioTick == 0L) {
+                    mStartDecodeAudioTick = System.nanoTime()
+                }
+                val presentationTimeUs = (System.nanoTime() - mStartDecodeAudioTick) / 1000
                 mAudioCodec.queueInputBuffer(inputBufferId, 0, inputLength, presentationTimeUs, 0)
-                mFrameCount++
-                // presentationTimeUs 此缓冲区的显示时间戳（以微秒为单位），通常是这个缓冲区应该呈现的媒体时间
             }
             val bufferInfo = MediaCodec.BufferInfo()
             var outputBufferIndex = mAudioCodec.dequeueOutputBuffer(bufferInfo, 0)

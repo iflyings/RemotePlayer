@@ -80,7 +80,7 @@ class ScreenRecordActivity : Activity() {
             }
 
             ScreenRecordService.startService(this, resultCode, resultData,
-                    576, 1024, false, "192.168.1.19")
+                    800, 600, false, "192.168.1.23")
             finish()
         }
     }

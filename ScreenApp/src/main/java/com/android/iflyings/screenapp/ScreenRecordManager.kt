@@ -7,6 +7,7 @@ import android.os.*
 import com.android.iflyings.mediaencoder.MediaEncoder
 import com.android.iflyings.mediaencoder.TypeUtils
 import java.lang.IllegalStateException
+import java.lang.Thread.sleep
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -27,7 +28,11 @@ class ScreenRecordManager(mediaProjection: MediaProjection) {
     private var mMediaSendThread: HandlerThread? = null
     private var mMediaSendHandler: Handler? = null
 
+    private var packageNumber = 0
+
     private var mVirtualDisplay: VirtualDisplay? = null
+
+    private var mRecordStart = 0L
 
     fun setDisplaySize(width: Int, height: Int) {
         if (mVirtualDisplay != null) {
@@ -51,7 +56,10 @@ class ScreenRecordManager(mediaProjection: MediaProjection) {
         mMediaEncoder.setMediaEncoderCallback(object: MediaEncoder.EncodeAvailableListener {
             override fun onVideoAvailable(buffer: ByteArray, offset: Int, length: Int) {
                 //mMediaDecoder.decodeVideo(buffer, offset, length)
-                sendData(buffer, offset, length)
+                if (mRecordStart == 0L) {
+                    mRecordStart = System.nanoTime() / 1000
+                }
+                sendData(buffer, offset, length, System.nanoTime() / 1000 - mRecordStart)
             }
 
             override fun onAudioAvailable(buffer: ByteArray, offset: Int, length: Int) {
@@ -73,41 +81,49 @@ class ScreenRecordManager(mediaProjection: MediaProjection) {
                 mMediaEncoder.getInputSurface(), null, null)//将屏幕数据与surface进行关联
     }
     fun stop() {
-        if (mVirtualDisplay != null) {
-            mVirtualDisplay!!.release()
-            mVirtualDisplay = null
-        }
+        mVirtualDisplay?.release()
+        mVirtualDisplay = null
 
         mMediaEncoder.stop()
-
         mDatagramSocket.close()
 
-        if (mMediaSendThread != null && mMediaSendThread!!.isAlive) {
-            mMediaSendThread!!.quitSafely()
-            mMediaSendThread!!.join()
-            mMediaSendThread = null
+        mMediaSendThread = mMediaSendThread?.takeIf { it.isAlive }?.run {
+            quitSafely()
+            join()
+            null
         }
     }
 
-    private fun sendData(buffer: ByteArray, offset: Int, length: Int) {
+    private fun sendData(buffer: ByteArray, offset: Int, length: Int, presentationTimeUs: Long) {
         if (mRemoteIpAddress == null || mMediaSendHandler == null || length > 50000) {
             return
         }
         mMediaSendHandler!!.post {
+
             var packetRemain = length
             var packetIndex = 0
             while (packetRemain > 0) {
                 //Log.i(TAG, "length = $length,packetRemain = $packetRemain")
-                val packetBuffer = ByteArray((if (packetRemain > 1300) 1300 else packetRemain) + 8)
-                TypeUtils.intToByteArray(length, packetBuffer, 0)
+                val packetHead = 20
+                val packetWrite = if (packetRemain > 1450) 1450 else packetRemain
+                val packetBuffer = ByteArray(packetWrite + packetHead)
+
+                TypeUtils.intToByteArray(packageNumber, packetBuffer, 0)
                 TypeUtils.intToByteArray(packetIndex, packetBuffer, 4)
-                System.arraycopy(buffer, offset + length - packetRemain, packetBuffer, 8, packetBuffer.size - 8)
+                TypeUtils.intToByteArray(length, packetBuffer, 8)
+                TypeUtils.longToByteArray(presentationTimeUs, packetBuffer, 12)
+                System.arraycopy(buffer, offset + length - packetRemain, packetBuffer, packetHead, packetWrite)
 
                 val datagramPacket = DatagramPacket(packetBuffer, 0, packetBuffer.size, InetAddress.getByName(mRemoteIpAddress), REMOTE_PORT)
                 mDatagramSocket.send(datagramPacket)
                 packetIndex += 1
-                packetRemain -= (packetBuffer.size - 8)
+                packetRemain -= packetWrite
+                sleep(0, 1000)
             }
+            //val datagramPacket = DatagramPacket(buffer, offset, length, InetAddress.getByName(mRemoteIpAddress), REMOTE_PORT)
+            //mDatagramSocket.send(datagramPacket)
+
+            packageNumber += 1
         }
     }
 }

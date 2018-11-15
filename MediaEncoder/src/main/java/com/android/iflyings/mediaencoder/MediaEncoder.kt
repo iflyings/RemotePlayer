@@ -26,7 +26,7 @@ class MediaEncoder {
     var videoWidth = 1440
     var videoHeight = 1080
     var videoFrameRate = 30//fps
-    var IFrameInterval = 3
+    var iFrameInterval = 1
     var videoBitRate = 2 * 1024 * 1024 //2M码率
 
     private var mTimeStamp = 0L
@@ -61,7 +61,7 @@ class MediaEncoder {
                 }
             }
             mediaCodec.releaseOutputBuffer(outputBufferId, true)
-            if (System.currentTimeMillis() - mTimeStamp >= IFrameInterval * 1000) { // 5秒后，设置请求关键帧的参数 GO
+            if (System.currentTimeMillis() - mTimeStamp >= iFrameInterval * 100) { // 5秒后，设置请求关键帧的参数 GO
                 mTimeStamp = System.currentTimeMillis()
                 //做Bundle初始化  主要目的是请求编码器“即时”产生同步帧
                 val params = Bundle()
@@ -136,7 +136,7 @@ class MediaEncoder {
                 MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
         format.setInteger(MediaFormat.KEY_BIT_RATE, videoBitRate) //编码器需要, 解码器可选
         format.setInteger(MediaFormat.KEY_FRAME_RATE, videoFrameRate)
-        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, IFrameInterval) //帧间隔(这个参数在很多手机上无效, 第二帧关键帧过了之后全是P帧)
+        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, iFrameInterval) //帧间隔(这个参数在很多手机上无效, 第二帧关键帧过了之后全是P帧)
         //format.setInteger(MediaFormat.KEY_ROTATION, 90)
         mVideoCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         if (mEncodeAvailableListener != null) {
