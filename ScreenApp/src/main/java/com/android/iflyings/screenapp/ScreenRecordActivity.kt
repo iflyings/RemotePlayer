@@ -74,13 +74,13 @@ class ScreenRecordActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, resultData: Intent) {
         if (requestCode == REQUEST_CODE_SCREEN_CAPTURE) {
-            if (resultCode != Activity.RESULT_OK) {
+            if (resultCode != RESULT_OK) {
                 Toast.makeText(this, "User cancelled", Toast.LENGTH_SHORT).show()
                 return
             }
 
             ScreenRecordService.startService(this, resultCode, resultData,
-                    800, 600, false, "192.168.1.23")
+                    800, 600, false, "192.168.2.102")
             finish()
         }
     }

@@ -1,30 +1,19 @@
 package com.android.iflyings.cameraapp
 
-import android.os.Handler
-import android.os.HandlerThread
-import android.util.Log
 import android.view.Surface
 import com.android.iflyings.mediaencoder.MediaDecoder
 import com.android.iflyings.mediaencoder.MediaEncoder
-import com.android.iflyings.mediaencoder.TypeUtils
-import java.nio.ByteBuffer
+import com.android.iflyings.mediaencoder.MediaSender
 
-class CameraRecordManager {
-    companion object {
-        private const val TAG = "zw"
-    }
+class CameraRecordManager(ip: String, port: Int) {
 
     private val mMediaEncoder = MediaEncoder()
     private val mMediaDecoder = MediaDecoder()
-    private val mBackgroundThread = HandlerThread("MediaThread")
     //private var mImageReader: ImageReader? = null
     //private var mAudioFile: BufferedOutputStream? = null
+    private var mRecordStart = 0L
 
-    val backgroundHandler: Handler
-    init {
-        mBackgroundThread.start()
-        backgroundHandler = Handler(mBackgroundThread.looper)
-    }
+    private var mMediaSender = MediaSender(ip, port)
 
     fun getInputSurface(): Surface {
         return mMediaEncoder.getInputSurface()
@@ -37,11 +26,17 @@ class CameraRecordManager {
         mMediaEncoder.videoHeight = height
         //mImageReader = ImageReader.newInstance(width, height, ImageFormat.YUV_420_888, 2)
     }
+
     fun prepare() {
         //setupImageReader(mImageReader!!)
         mMediaEncoder.setMediaEncoderCallback(object: MediaEncoder.EncodeAvailableListener {
             override fun onVideoAvailable(buffer: ByteArray, offset: Int, length: Int) {
-                mMediaDecoder.decodeVideo(buffer, offset, length)
+                if (mRecordStart == 0L) {
+                    mRecordStart = System.nanoTime() / 1000
+                }
+                val presentationTimeUs = System.nanoTime() / 1000 - mRecordStart
+                mMediaDecoder.decodeVideo(buffer, offset, length, presentationTimeUs)
+                mMediaSender.sendData(buffer, offset, length, presentationTimeUs)
             }
             override fun onAudioAvailable(buffer: ByteArray, offset: Int, length: Int) {
                 //mAudioFile?.write(buffer,offset,length)
@@ -62,25 +57,5 @@ class CameraRecordManager {
         //mAudioFile?.close()
         mMediaEncoder.stop()
         mMediaDecoder.stop()
-        if (mBackgroundThread.isAlive) {
-            mBackgroundThread.quitSafely()
-            mBackgroundThread.join()
-        }
-    }
-
-    private fun sendData(outputBuffer: ByteBuffer, size: Int) {
-        Log.i(TAG, "sendData = $size")
-
-        var packetIndex = 0
-        var packetRemain = size
-        while (packetRemain > 0) {
-            val length = if (packetRemain > 1024) 1024 else packetRemain
-            val buffer = ByteArray(length + 8)
-            TypeUtils.intToByteArray(size, buffer, 0)
-            TypeUtils.intToByteArray(packetIndex, buffer, 4)
-            outputBuffer.get(buffer, 8, length)
-            packetIndex += 1
-            packetRemain -= length
-        }
     }
 }

@@ -17,12 +17,24 @@ import android.view.TextureView
 import android.util.SparseIntArray
 import android.graphics.RectF
 import android.graphics.Matrix
+import android.os.Handler
+import android.os.HandlerThread
 
 class CameraRecordView : TextureView, TextureView.SurfaceTextureListener {
     companion object {
         private const val TAG = "zw"
         private val ORIENTATIONS = SparseIntArray()
     }
+
+    private var mDisplayRotation = 0
+    private var mSensorOrientation = 0
+    private var mPreviewSize: Size? = null
+    private var mCameraDevice: CameraDevice? = null
+    private var mCameraCaptureSession: CameraCaptureSession? = null
+    private lateinit var mCameraRecordManager: CameraRecordManager
+
+    private lateinit var mBackgroundThread: HandlerThread
+    private lateinit var mBackgroundHandler: Handler
 
     override fun onSurfaceTextureSizeChanged(surfaceTexture: SurfaceTexture, w: Int, h: Int) {
         Log.i(TAG, "onSurfaceTextureSizeChanged")
@@ -33,10 +45,18 @@ class CameraRecordView : TextureView, TextureView.SurfaceTextureListener {
     override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
         Log.i(TAG, "onSurfaceTextureDestroyed")
         closeCamera()
+
+        mBackgroundHandler.removeCallbacksAndMessages(null)
+        mBackgroundThread.quitSafely()
+        mBackgroundThread.join()
         return false
     }
     override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, w: Int, h: Int) {
         Log.i(TAG, "onSurfaceTextureAvailable")
+        mBackgroundThread = HandlerThread("MediaThread")
+        mBackgroundThread.start()
+        mBackgroundHandler = Handler(mBackgroundThread.looper)
+
         createCamera()
     }
 
@@ -58,16 +78,8 @@ class CameraRecordView : TextureView, TextureView.SurfaceTextureListener {
         ORIENTATIONS.append(Surface.ROTATION_180, 270)
         ORIENTATIONS.append(Surface.ROTATION_270, 180)
 
-        mCameraRecordManager = CameraRecordManager()
         surfaceTextureListener = this
     }
-
-    private var mDisplayRotation = 0
-    private var mSensorOrientation = 0
-    private var mPreviewSize: Size? = null
-    private var mCameraDevice: CameraDevice? = null
-    private var mCameraCaptureSession: CameraCaptureSession? = null
-    private lateinit var mCameraRecordManager: CameraRecordManager
 
     private fun getPreferredPreviewSize(width: Int, height: Int): Size? {
         val cameraManager =
@@ -80,28 +92,13 @@ class CameraRecordView : TextureView, TextureView.SurfaceTextureListener {
             // 获取摄像头支持的配置属性
             val streamConfigurationMap = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
             val mapFormats = streamConfigurationMap.outputFormats
-            var chooseformat = 0
-            for (format in mapFormats) {
-                Log.i(TAG, "camera format = $format")
-                if (ImageFormat.YUV_420_888 == format) {
-                    chooseformat = ImageFormat.YUV_420_888
-                    break
-                }
-            }
-            assert(chooseformat == ImageFormat.YUV_420_888)
+                    .filter { it == ImageFormat.YUV_420_888 }
+                    .takeIf { it.isNotEmpty() }?.get(0) ?: return null
             // 获取所有支持的预览尺寸
-            val mapSizes = streamConfigurationMap.getOutputSizes(ImageFormat.YUV_420_888)
-            val collectorSizes = arrayListOf<Size>()
-            for (size in mapSizes) {
-                Log.i(TAG, "camera output size = (${size.width}, ${size.height})")
-                if (size.width >= width && size.height >= height) {
-                    collectorSizes.add(size)
-                }
-            }
-            if (collectorSizes.size > 0) {
-                return Collections.min(collectorSizes) { p0, p1 -> p0.width * p0.height - p1.width * p1.height }
-            }
-            return Collections.max(mapSizes.toList()) { p0, p1 -> p0.width * p0.height - p1.width * p1.height }
+            val mapSizes = streamConfigurationMap.getOutputSizes(mapFormats)
+            return mapSizes.filter { it.width >= width && it.height >= height }
+                    .takeIf { it.isNotEmpty() }?.sortedBy { size -> size.width*size.height }?.get(0)
+                    ?: mapSizes.asList().sortedByDescending { size -> size.width*size.height }[0]
         } catch (e: CameraAccessException) {
             e.printStackTrace()
             return null
@@ -135,13 +132,14 @@ class CameraRecordView : TextureView, TextureView.SurfaceTextureListener {
                         cameraDevice.close()
                         mCameraDevice = null
                     }
-                }, mCameraRecordManager.backgroundHandler)
+                }, mBackgroundHandler)
     }
 
-    fun openCamera(width: Int, height: Int, displayRotation: Int) {
+    fun openCamera(width: Int, height: Int, displayRotation: Int, ip: String, port: Int) {
         mPreviewSize = getPreferredPreviewSize(width, height)
         Log.i("zw", "PreviewSize = (${mPreviewSize!!.width},${mPreviewSize!!.height})")
         mDisplayRotation = displayRotation
+        mCameraRecordManager = CameraRecordManager(ip, port)
         createCamera()
     }
     private fun closeCamera() {
@@ -154,7 +152,7 @@ class CameraRecordView : TextureView, TextureView.SurfaceTextureListener {
         // 设置相机的控制模式为自动，方法具体含义点进去（auto-exposure, auto-white-balance, auto-focus）
         //builder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
         try { //设置重复捕获图片信息
-            session.setRepeatingRequest(builder.build(), null, mCameraRecordManager.backgroundHandler)
+            session.setRepeatingRequest(builder.build(), null, mBackgroundHandler)
         } catch (e: CameraAccessException) {
             e.printStackTrace()
         }
@@ -182,7 +180,7 @@ class CameraRecordView : TextureView, TextureView.SurfaceTextureListener {
                             cameraCaptureSession.close()
                             mCameraRecordManager.stop()
                         }
-                    }, mCameraRecordManager.backgroundHandler)
+                    }, mBackgroundHandler)
         } catch (e: CameraAccessException) {
             e.printStackTrace()
         }
@@ -244,7 +242,7 @@ class CameraRecordView : TextureView, TextureView.SurfaceTextureListener {
                             mCameraCaptureSession = null
                             mCameraRecordManager.stop()
                         }
-                    }, mCameraRecordManager.backgroundHandler)
+                    }, mBackgroundHandler)
         } catch (e: CameraAccessException) {
             e.printStackTrace()
         }

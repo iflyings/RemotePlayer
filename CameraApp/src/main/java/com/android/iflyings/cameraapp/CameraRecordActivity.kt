@@ -37,7 +37,7 @@ class CameraRecordActivity : AppCompatActivity() {
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
 
-        ib_control.setOnClickListener { _ ->
+        ib_control.setOnClickListener {
             isRecording = if (isRecording) {
                 ib_control.setImageResource(R.drawable.ic_play_arrow_black_48dp)
                 false
@@ -84,7 +84,7 @@ class CameraRecordActivity : AppCompatActivity() {
 
     private fun initCamera() {
         runOnUiThread {
-            cv_show.openCamera(mWidth, mHeight, windowManager.defaultDisplay.rotation)
+            cv_show.openCamera(mWidth, mHeight, windowManager.defaultDisplay.rotation, "192.168.2.102", 18000)
             ib_control.isClickable = true
         }
     }
